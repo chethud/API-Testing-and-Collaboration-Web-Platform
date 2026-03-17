@@ -15,6 +15,10 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 _cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 _cors_origins = [o.strip() for o in _cors_origins if o.strip()]
+# On Vercel, allow the deployment URL (same-origin for full-stack deploy)
+_vercel_url = os.environ.get("VERCEL_URL")
+if _vercel_url:
+    _cors_origins.extend([f"https://{_vercel_url}", f"https://www.{_vercel_url}"])
 CORS(app, origins=_cors_origins, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins=_cors_origins)
 
