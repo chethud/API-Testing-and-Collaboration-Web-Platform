@@ -13,8 +13,10 @@ from db import get_db, init_db, row_to_dict, safe_json
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"], supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+_cors_origins = [o.strip() for o in _cors_origins if o.strip()]
+CORS(app, origins=_cors_origins, supports_credentials=True)
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins)
 
 # Analytics in-memory (same as Node)
 CALL_LOG = []

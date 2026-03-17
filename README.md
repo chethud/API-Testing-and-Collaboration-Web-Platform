@@ -57,6 +57,18 @@ Full-stack app for testing APIs, organizing requests, and collaborating in real 
    - Use **Mock server** in the sidebar to add mock endpoints; call them with URL like  
      `http://localhost:5173/api/mock/server/<workspaceId>/your-path`
 
+## Deploy to Vercel (frontend)
+
+1. Push your code to GitHub (e.g. [chethud/API-Testing-and-Collaboration-Web-Platform](https://github.com/chethud/API-Testing-and-Collaboration-Web-Platform)).
+2. Go to [vercel.com](https://vercel.com) → **Add New** → **Project** → Import your repo.
+3. Set **Root Directory** to `frontend` → **Edit** → enter `frontend` → Save.
+4. (Optional) If you deployed the backend elsewhere (e.g. Render), add an **Environment Variable**:
+   - **Name:** `VITE_API_URL`
+   - **Value:** your backend URL, e.g. `https://your-app.onrender.com`
+5. Click **Deploy**. The frontend will be live at `https://your-project.vercel.app`.
+
+**Note:** Without a deployed backend, the app will load but login/API will fail. Deploy the Flask backend to [Render](https://render.com), [Railway](https://railway.app), or similar, then set `VITE_API_URL` in Vercel and allow your Vercel URL in the backend CORS settings.
+
 ## Scripts
 
 - **Backend**: `python app.py` (Flask + SocketIO). Optional: `set PORT=4000` then `python app.py`

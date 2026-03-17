@@ -9,6 +9,7 @@ import AIPanel from "../components/AIPanel";
 import Comments from "../components/Comments";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
+import { API_BASE } from "../api/config";
 
 type ApiRequest = {
   _id: string;
@@ -69,7 +70,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!workspaceId) return;
-    const socket = io(window.location.origin, { path: "/socket.io", withCredentials: true });
+    const socket = io(API_BASE || window.location.origin, { path: "/socket.io", withCredentials: true });
     socket.emit("join_workspace", workspaceId);
     socket.on("request_updated", (payload: { requestId: string }) => {
       if (currentRequest?._id === payload.requestId) {
