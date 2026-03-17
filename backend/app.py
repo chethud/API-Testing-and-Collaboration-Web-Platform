@@ -20,7 +20,9 @@ _vercel_url = os.environ.get("VERCEL_URL")
 if _vercel_url:
     _cors_origins.extend([f"https://{_vercel_url}", f"https://www.{_vercel_url}"])
 CORS(app, origins=_cors_origins, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins=_cors_origins)
+# Use threading on Vercel (eventlet can crash in serverless)
+_async_mode = "threading" if os.environ.get("VERCEL") else None
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode=_async_mode)
 
 # Analytics in-memory (same as Node)
 CALL_LOG = []

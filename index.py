@@ -3,6 +3,13 @@ Vercel entrypoint: Flask app + static frontend.
 All /api/* are handled by backend; everything else serves the React build from public/.
 """
 import os
+import sys
+
+# Ensure project root is on path (Vercel serverless does not add it)
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
 from flask import send_from_directory, abort
 
 from backend.app import app
