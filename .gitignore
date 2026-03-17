@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Python
+backend/venv/
+backend/__pycache__/
+*.py[cod]
+backend/.env
+backend/.backend-port
+
+# SQLite (regenerate with: python backend/seed_test_data.py)
+backend/*.sqlite
+
+# Build
+frontend/dist/
+*.local
+
+# IDE / OS
+.idea
+.DS_Store
+.vscode/
+
+# Logs
+*.log
