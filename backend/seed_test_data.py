@@ -5,7 +5,10 @@ Then log in with: test@example.com / test123
 """
 import bcrypt
 import json
-from db import get_db, init_db
+try:
+    from backend.db import get_db, init_db
+except ImportError:
+    from db import get_db, init_db
 
 def seed():
     init_db()

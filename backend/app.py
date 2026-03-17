@@ -9,7 +9,10 @@ import jwt
 import bcrypt
 import requests as http_requests
 
-from db import get_db, init_db, row_to_dict, safe_json
+try:
+    from backend.db import get_db, init_db, row_to_dict, safe_json
+except ImportError:
+    from db import get_db, init_db, row_to_dict, safe_json
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
