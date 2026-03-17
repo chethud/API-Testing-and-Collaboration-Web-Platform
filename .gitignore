@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
-frontend/node_modules/
+
+# Legacy (removed React frontend / Python backend folders)
+backend/
+frontend/
+
+# Tool / IDE
+.qodo/
 
 # Python
 backend/venv/
@@ -9,8 +15,9 @@ backend/__pycache__/
 backend/.env
 backend/.backend-port
 
-# SQLite (regenerate with: python backend/seed_test_data.py)
-backend/*.sqlite
+# SQLite (regenerate with: python seed_test_data.py)
+*.sqlite
+api-platform.sqlite
 
 # Build
 frontend/dist/

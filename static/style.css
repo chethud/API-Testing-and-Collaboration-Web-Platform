@@ -1,0 +1,22 @@
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: #1a1a2e; color: #eee; min-height: 100vh; }
+.auth-box { max-width: 360px; margin: 3rem auto; padding: 2rem; background: #16213e; border-radius: 8px; }
+.auth-box h1 { margin-top: 0; font-size: 1.25rem; }
+.auth-box h2 { font-size: 1rem; color: #aab; }
+.auth-box label { display: block; margin: 1rem 0 0.25rem; }
+.auth-box input { width: 100%; padding: 0.5rem; border: 1px solid #444; border-radius: 4px; background: #0f0f1a; color: #eee; }
+.auth-box button { margin-top: 1rem; padding: 0.5rem 1rem; background: #0f3460; color: #eee; border: none; border-radius: 4px; cursor: pointer; }
+.auth-box button:hover { background: #1a4a7a; }
+.auth-box .error { color: #f88; margin: 0.5rem 0; }
+.auth-box a { color: #7af; }
+.dashboard-header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #333; }
+.dashboard-header h1 { margin: 0; font-size: 1.25rem; }
+.dashboard-header a { color: #7af; }
+.dashboard-main { display: grid; gap: 2rem; max-width: 900px; }
+.workspaces ul { list-style: none; padding: 0; }
+.workspaces li { padding: 0.5rem 0; border-bottom: 1px solid #333; }
+.request-runner label { display: block; margin: 0.75rem 0 0.25rem; }
+.request-runner input[type="url"], .request-runner select { width: 100%; max-width: 480px; padding: 0.5rem; background: #0f0f1a; border: 1px solid #444; color: #eee; border-radius: 4px; }
+.request-runner textarea { width: 100%; max-width: 480px; padding: 0.5rem; background: #0f0f1a; border: 1px solid #444; color: #eee; border-radius: 4px; font-family: monospace; }
+.request-runner button { margin-top: 0.5rem; padding: 0.5rem 1rem; background: #0f3460; color: #eee; border: none; border-radius: 4px; cursor: pointer; }
+.response-box { margin-top: 1rem; padding: 1rem; background: #0f0f1a; border: 1px solid #444; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; max-height: 400px; overflow: auto; }

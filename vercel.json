@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pip install -r requirements.txt && python build.py",
+  "buildCommand": "pip install -r requirements.txt",
   "env": {
     "SQLITE_PATH": "/tmp/api-platform.sqlite"
   }

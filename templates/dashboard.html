@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – API Testing Platform{% endblock %}
+{% block body %}
+<header class="dashboard-header">
+  <h1>API Testing Platform</h1>
+  <span>{{ user.name }} ({{ user.email }})</span>
+  <a href="{{ url_for('logout_page') }}">Log out</a>
+</header>
+<main class="dashboard-main">
+  <section class="workspaces">
+    <h2>Workspaces</h2>
+    <ul>
+      {% for ws in workspaces %}
+      <li><strong>{{ ws.name }}</strong> ({{ ws.type }})</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="request-runner">
+    <h2>Send request</h2>
+    <form id="run-form">
+      <label>Method
+        <select name="method">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+      </label>
+      <label>URL <input type="url" name="url" placeholder="https://api.example.com/..." required></label>
+      <label>Body (optional) <textarea name="body" rows="4" placeholder='{"key": "value"}'></textarea></label>
+      <input type="hidden" name="workspaceId" value="{{ workspaces[0].id if workspaces else '' }}">
+      <button type="submit">Send</button>
+    </form>
+    <div id="response" class="response-box"></div>
+  </section>
+</main>
+<script>
+document.getElementById('run-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const method = form.method.value;
+  const url = form.url.value.trim();
+  const body = form.body.value.trim();
+  const workspaceId = form.workspaceId.value;
+  const payload = { method, url, workspaceId: workspaceId || undefined };
+  if (body && method !== 'GET') payload.body = body;
+  const el = document.getElementById('response');
+  el.textContent = 'Sending…';
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    el.textContent = 'Error: ' + err.message;
+  }
+};
+</script>
+{% endblock %}

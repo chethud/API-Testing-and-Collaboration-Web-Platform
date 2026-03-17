@@ -1,33 +1,24 @@
+"""
+API Testing Platform - Flask + SQLite only.
+Server-rendered pages: /, /login, /signup, /dashboard. REST API under /api/*.
+"""
 import os
 import json
 import time
 import functools
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, redirect, url_for, render_template
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import jwt
 import bcrypt
 import requests as http_requests
 
-try:
-    from backend.db import get_db, init_db, row_to_dict, safe_json
-except ImportError:
-    from db import get_db, init_db, row_to_dict, safe_json
+from db import get_db, init_db, row_to_dict, safe_json
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
-_cors_origins = [o.strip() for o in _cors_origins if o.strip()]
-# On Vercel, allow the deployment URL (same-origin for full-stack deploy)
-_vercel_url = os.environ.get("VERCEL_URL")
-if _vercel_url:
-    _cors_origins.extend([f"https://{_vercel_url}", f"https://www.{_vercel_url}"])
-CORS(app, origins=_cors_origins, supports_credentials=True)
-# Use threading on Vercel (eventlet can crash in serverless)
-_async_mode = "threading" if os.environ.get("VERCEL") else None
-socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode=_async_mode)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+CORS(app, supports_credentials=True)
 
-# Analytics in-memory (same as Node)
 CALL_LOG = []
 
 
@@ -63,6 +54,24 @@ def require_auth(f):
     return wrapped
 
 
+def get_current_user():
+    """Return (user_id, user_dict) or None for HTML routes. Redirect to login if no token."""
+    token = get_token()
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
+        user_id = payload.get("userId")
+        conn = get_db()
+        row = conn.execute("SELECT id, email, name, role FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        conn.close()
+        if not row:
+            return None
+        return str(row["id"]), {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}
+    except Exception:
+        return None
+
+
 def can_access_workspace(user_id, workspace_id):
     conn = get_db()
     row = conn.execute(
@@ -79,9 +88,9 @@ def health():
     return jsonify({"status": "ok"})
 
 
-# ---- Auth ----
+# ---- Auth (API) ----
 @app.route("/api/auth/signup", methods=["POST"])
-def signup():
+def signup_api():
     try:
         data = request.get_json() or {}
         em = (data.get("email") or "").strip()
@@ -112,7 +121,7 @@ def signup():
 
 
 @app.route("/api/auth/login", methods=["POST"])
-def login():
+def login_api():
     try:
         data = request.get_json() or {}
         em = data.get("email")
@@ -133,7 +142,7 @@ def login():
 
 
 @app.route("/api/auth/logout", methods=["POST"])
-def logout():
+def logout_api():
     resp = make_response(jsonify({"ok": True}))
     resp.set_cookie("token", "", max_age=0)
     return resp
@@ -157,7 +166,85 @@ def me(user_id):
     return jsonify({"user": user, "workspaces": workspaces})
 
 
-# ---- Workspaces ----
+# ---- HTML pages ----
+@app.route("/")
+def index():
+    user = get_current_user()
+    if user:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login_page"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "POST":
+        em = (request.form.get("email") or "").strip()
+        pw = request.form.get("password") or ""
+        if not em or not pw:
+            return render_template("login.html", error="Email and password required")
+        conn = get_db()
+        row = conn.execute("SELECT id, email, name, role, password FROM users WHERE email = ?", (em,)).fetchone()
+        conn.close()
+        if not row or not bcrypt.checkpw(pw.encode("utf-8"), row["password"].encode("utf-8")):
+            return render_template("login.html", error="Invalid credentials")
+        token = sign_token(row["id"])
+        resp = make_response(redirect(url_for("dashboard")))
+        resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
+        return resp
+    return render_template("login.html")
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup_page():
+    if request.method == "POST":
+        em = (request.form.get("email") or "").strip()
+        pw = request.form.get("password") or ""
+        nm = (request.form.get("name") or "").strip()
+        if not em or not pw or not nm:
+            return render_template("signup.html", error="Email, password and name required")
+        conn = get_db()
+        if conn.execute("SELECT id FROM users WHERE email = ?", (em,)).fetchone():
+            conn.close()
+            return render_template("signup.html", error="Email already registered")
+        hashed = bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=10)).decode("utf-8")
+        cur = conn.execute("INSERT INTO users (email, password, name) VALUES (?, ?, ?)", (em, hashed, nm))
+        user_id = cur.lastrowid
+        cur = conn.execute("INSERT INTO workspaces (name, type, owner_id) VALUES (?, 'personal', ?)", (f"{nm}'s Workspace", user_id))
+        ws_id = cur.lastrowid
+        conn.execute("INSERT INTO workspace_members (workspace_id, user_id) VALUES (?, ?)", (ws_id, user_id))
+        conn.commit()
+        conn.close()
+        token = sign_token(user_id)
+        resp = make_response(redirect(url_for("dashboard")))
+        resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
+        return resp
+    return render_template("signup.html")
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout_page():
+    resp = make_response(redirect(url_for("login_page")))
+    resp.set_cookie("token", "", max_age=0)
+    return resp
+
+
+@app.route("/dashboard")
+def dashboard():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login_page"))
+    user_id, user_dict = user
+    conn = get_db()
+    ws_rows = conn.execute(
+        "SELECT w.id, w.name, w.type FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
+        (int(user_id),),
+    ).fetchall()
+    workspaces = [{"id": r["id"], "name": r["name"], "type": r["type"]} for r in ws_rows]
+    conn.close()
+    return render_template("dashboard.html", user=user_dict, workspaces=workspaces)
+
+
+# ---- Workspaces (API) ----
 @app.route("/api/workspaces", methods=["GET"])
 @require_auth
 def list_workspaces(user_id):
@@ -200,7 +287,7 @@ def get_workspace(user_id, wid):
     return jsonify({"_id": str(row["id"]), "name": row["name"], "type": row["type"]})
 
 
-# ---- Collections ----
+# ---- Collections (API) ----
 @app.route("/api/collections")
 @require_auth
 def list_collections(user_id):
@@ -271,7 +358,7 @@ def delete_collection(user_id, cid):
     return jsonify({"ok": True})
 
 
-# ---- Requests ----
+# ---- Requests (API) ----
 def api_request_to_json(r):
     return {
         "_id": str(r["id"]),
@@ -411,7 +498,6 @@ def update_request(user_id, rid):
         (rid,),
     ).fetchone()
     conn.close()
-    socketio.emit("request_updated", {"workspaceId": str(row["workspace_id"]), "requestId": str(row["id"])}, room=str(row["workspace_id"]))
     return jsonify(api_request_to_json(dict(row)))
 
 
@@ -740,22 +826,8 @@ def create_comment(user_id, request_id):
     return jsonify({"_id": str(row["id"]), "requestId": str(row["request_id"]), "userId": {"name": row["name"], "email": row["email"]}, "text": row["text"], "createdAt": row["created_at"]}), 201
 
 
-# ---- SocketIO ----
-@socketio.on("join_workspace")
-def on_join_workspace(data):
-    from flask_socketio import join_room
-    wid = data if isinstance(data, str) else data.get("workspaceId") or data.get(0)
-    if wid:
-        join_room(str(wid))
-
-
-@socketio.on("request_updated")
-def on_request_updated(data):
-    emit("request_updated", data, room=data.get("workspaceId", ""))
-
-
 if __name__ == "__main__":
     init_db()
-    PORT = int(os.environ.get("PORT", 35421))
-    print(f"Server listening on http://127.0.0.1:{PORT}")
-    socketio.run(app, host="127.0.0.1", port=PORT, debug=True)
+    PORT = int(os.environ.get("PORT", 5000))
+    print(f"Server: http://127.0.0.1:{PORT}")
+    app.run(host="127.0.0.1", port=PORT, debug=True)
