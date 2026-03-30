@@ -258,7 +258,9 @@
   }
 
   function applyEnvVars(str) {
-    return str.replace(/\{\{(\w+)\}\}/g, (_,k)=>envVars[k]||`{{${k}}}`);
+    return str.replace(/\{\{(\w+)\}\}/g, function(_, k) {
+      return envVars[k] !== undefined ? envVars[k] : '{{' + k + '}}';
+    });
   }
 
   btnAddEnv.addEventListener('click', ()=>addEnvRow());
