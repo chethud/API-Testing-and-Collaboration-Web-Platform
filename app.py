@@ -170,19 +170,36 @@ def logout_api():
 @app.route("/api/auth/me")
 @require_auth
 def me(user_id):
-    conn = get_db()
-    row = conn.execute("SELECT id, email, name, role FROM users WHERE id = ?", (int(user_id),)).fetchone()
-    if not row:
+    try:
+        init_db()
+        conn = get_db()
+        row = conn.execute("SELECT id, email, name, role FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        if row:
+            user = {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}
+            ws_rows = conn.execute(
+                "SELECT w.id, w.name, w.type FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
+                (int(user_id),),
+            ).fetchall()
+            conn.close()
+            workspaces = [{"_id": str(r["id"]), "name": r["name"], "type": r["type"]} for r in ws_rows]
+            return jsonify({"user": user, "workspaces": workspaces})
         conn.close()
+    except Exception:
+        pass
+    # Fallback: token is valid but DB is empty (Vercel cold start)
+    # Decode JWT to get embedded user info
+    try:
+        token = get_token()
+        payload = __import__('jwt').decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
+        user = {
+            "id": user_id,
+            "email": payload.get("email", ""),
+            "name": payload.get("name", "User"),
+            "role": payload.get("role", "member"),
+        }
+        return jsonify({"user": user, "workspaces": []})
+    except Exception:
         return jsonify({"error": "Unauthorized"}), 401
-    user = {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}
-    ws_rows = conn.execute(
-        "SELECT w.id, w.name, w.type FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
-        (int(user_id),),
-    ).fetchall()
-    conn.close()
-    workspaces = [{"_id": str(r["id"]), "name": r["name"], "type": r["type"]} for r in ws_rows]
-    return jsonify({"user": user, "workspaces": workspaces})
 
 
 # ---- HTML pages ----
@@ -259,13 +276,17 @@ def dashboard():
     if not user:
         return redirect(url_for("login_page"))
     user_id, user_dict = user
-    conn = get_db()
-    ws_rows = conn.execute(
-        "SELECT w.id, w.name, w.type FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
-        (int(user_id),),
-    ).fetchall()
-    workspaces = [{"id": r["id"], "name": r["name"], "type": r["type"]} for r in ws_rows]
-    conn.close()
+    try:
+        init_db()  # Ensure tables exist on cold start
+        conn = get_db()
+        ws_rows = conn.execute(
+            "SELECT w.id, w.name, w.type FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
+            (int(user_id),),
+        ).fetchall()
+        workspaces = [{"id": r["id"], "name": r["name"], "type": r["type"]} for r in ws_rows]
+        conn.close()
+    except Exception:
+        workspaces = []
     return render_template("dashboard.html", user=user_dict, workspaces=workspaces)
 
 
@@ -275,13 +296,17 @@ def analytics_page():
     if not user:
         return redirect(url_for("login_page"))
     user_id, user_dict = user
-    conn = get_db()
-    ws_rows = conn.execute(
-        "SELECT w.id, w.name FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
-        (int(user_id),),
-    ).fetchall()
-    workspaces = [{"id": r["id"], "name": r["name"]} for r in ws_rows]
-    conn.close()
+    try:
+        init_db()
+        conn = get_db()
+        ws_rows = conn.execute(
+            "SELECT w.id, w.name FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
+            (int(user_id),),
+        ).fetchall()
+        workspaces = [{"id": r["id"], "name": r["name"]} for r in ws_rows]
+        conn.close()
+    except Exception:
+        workspaces = []
     return render_template("analytics.html", user=user_dict, workspaces=workspaces)
 
 
@@ -290,6 +315,10 @@ def notifications_page():
     user = get_current_user()
     if not user:
         return redirect(url_for("login_page"))
+    try:
+        init_db()
+    except Exception:
+        pass
     return render_template("notifications.html", user=user[1])
 
 
