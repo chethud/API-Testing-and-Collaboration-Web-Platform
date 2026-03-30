@@ -29,15 +29,22 @@ def get_token():
     return request.cookies.get("token") or (request.headers.get("Authorization") or "").replace("Bearer ", "")
 
 
-def sign_token(user_id):
+def sign_token(user_id, email="", name="", role="member"):
     return jwt.encode(
-        {"userId": str(user_id), "exp": int(time.time()) + 7 * 24 * 3600},
+        {
+            "userId": str(user_id),
+            "email": email,
+            "name": name,
+            "role": role,
+            "exp": int(time.time()) + 7 * 24 * 3600,
+        },
         app.config["SECRET_KEY"],
         algorithm="HS256",
     )
 
 
 def require_auth(f):
+    """Validate JWT only — no DB lookup so Vercel cold-starts don't log users out."""
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
         token = get_token()
@@ -46,10 +53,7 @@ def require_auth(f):
         try:
             payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
             user_id = payload.get("userId")
-            conn = get_db()
-            row = conn.execute("SELECT id FROM users WHERE id = ?", (int(user_id),)).fetchone()
-            conn.close()
-            if not row:
+            if not user_id:
                 return jsonify({"error": "Unauthorized"}), 401
             return f(user_id=str(user_id), *args, **kwargs)
         except Exception:
@@ -58,19 +62,31 @@ def require_auth(f):
 
 
 def get_current_user():
-    """Return (user_id, user_dict) or None for HTML routes. Redirect to login if no token."""
+    """Return (user_id, user_dict) or None. Falls back to JWT payload if DB is empty (Vercel cold start)."""
     token = get_token()
     if not token:
         return None
     try:
         payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
         user_id = payload.get("userId")
-        conn = get_db()
-        row = conn.execute("SELECT id, email, name, role FROM users WHERE id = ?", (int(user_id),)).fetchone()
-        conn.close()
-        if not row:
+        if not user_id:
             return None
-        return str(row["id"]), {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}
+        # Try DB first (accurate data); fall back to JWT payload on cold starts
+        try:
+            conn = get_db()
+            row = conn.execute("SELECT id, email, name, role FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            conn.close()
+            if row:
+                return str(row["id"]), {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}
+        except Exception:
+            pass
+        # Fallback: trust JWT payload (survives Vercel SQLite cold-start resets)
+        return str(user_id), {
+            "id": user_id,
+            "email": payload.get("email", ""),
+            "name": payload.get("name", "User"),
+            "role": payload.get("role", "member"),
+        }
     except Exception:
         return None
 
@@ -113,7 +129,7 @@ def signup_api():
         conn.execute("INSERT INTO workspace_members (workspace_id, user_id) VALUES (?, ?)", (ws_id, user_id))
         conn.commit()
         conn.close()
-        token = sign_token(user_id)
+        token = sign_token(user_id, email=em, name=nm, role="member")
         resp = make_response(jsonify({"user": {"id": user_id, "email": em, "name": nm, "role": "member"}, "workspaceId": str(ws_id)}), 201)
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
         return resp
@@ -136,7 +152,7 @@ def login_api():
         conn.close()
         if not row or not bcrypt.checkpw(pw.encode("utf-8"), row["password"].encode("utf-8")):
             return jsonify({"error": "Invalid credentials"}), 401
-        token = sign_token(row["id"])
+        token = sign_token(row["id"], email=row["email"], name=row["name"], role=row["role"])
         resp = make_response(jsonify({"user": {"id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"]}}))
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
         return resp
@@ -192,7 +208,7 @@ def login_page():
         if not row or not bcrypt.checkpw(pw.encode("utf-8"), row["password"].encode("utf-8")):
             flash("Invalid email or password.", "error")
             return render_template("login.html", error="Invalid credentials")
-        token = sign_token(row["id"])
+        token = sign_token(row["id"], email=row["email"], name=row["name"], role=row["role"])
         flash("Welcome back!", "success")
         resp = make_response(redirect(url_for("dashboard")))
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
@@ -222,7 +238,7 @@ def signup_page():
         conn.execute("INSERT INTO workspace_members (workspace_id, user_id) VALUES (?, ?)", (ws_id, user_id))
         conn.commit()
         conn.close()
-        token = sign_token(user_id)
+        token = sign_token(user_id, email=em, name=nm, role="member")
         flash("Account created. Welcome!", "success")
         resp = make_response(redirect(url_for("dashboard")))
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
