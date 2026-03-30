@@ -6,6 +6,7 @@ import os
 import json
 import time
 import functools
+import traceback
 from flask import Flask, request, jsonify, make_response, redirect, url_for, render_template, flash
 from flask_cors import CORS
 import jwt
@@ -20,9 +21,25 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 CORS(app, supports_credentials=True)
 
 # Initialize database tables for serverless environments
-init_db()
+try:
+    init_db()
+except Exception as _e:
+    print("init_db failed:", _e)
 
 CALL_LOG = []
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global error handler - returns JSON with error details for debugging."""
+    tb = traceback.format_exc()
+    print("UNHANDLED EXCEPTION:", tb)
+    # For HTML routes, render a friendly error page
+    if request.accept_mimetypes.accept_html:
+        return f"""<html><body style='font-family:monospace;padding:2rem;background:#0f0f1a;color:#f38ba8'>
+<h2>Internal Error</h2><pre style='color:#cdd6f4;font-size:0.85rem'>{tb}</pre>
+<a href='/dashboard' style='color:#89b4fa'>Back to Dashboard</a></body></html>""", 500
+    return jsonify({"error": str(e), "traceback": tb}), 500
 
 
 def get_token():
