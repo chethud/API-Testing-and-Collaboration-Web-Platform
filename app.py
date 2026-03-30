@@ -19,6 +19,9 @@ app.config["SECRET_KEY"] = os.environ.get("JWT_SECRET", "dev-secret-change-in-pr
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 CORS(app, supports_credentials=True)
 
+# Initialize database tables for serverless environments
+init_db()
+
 CALL_LOG = []
 
 
