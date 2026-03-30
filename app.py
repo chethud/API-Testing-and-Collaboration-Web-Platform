@@ -6,7 +6,7 @@ import os
 import json
 import time
 import functools
-from flask import Flask, request, jsonify, make_response, redirect, url_for, render_template
+from flask import Flask, request, jsonify, make_response, redirect, url_for, render_template, flash
 from flask_cors import CORS
 import jwt
 import bcrypt
@@ -181,13 +181,16 @@ def login_page():
         em = (request.form.get("email") or "").strip()
         pw = request.form.get("password") or ""
         if not em or not pw:
+            flash("Email and password are required.", "error")
             return render_template("login.html", error="Email and password required")
         conn = get_db()
         row = conn.execute("SELECT id, email, name, role, password FROM users WHERE email = ?", (em,)).fetchone()
         conn.close()
         if not row or not bcrypt.checkpw(pw.encode("utf-8"), row["password"].encode("utf-8")):
+            flash("Invalid email or password.", "error")
             return render_template("login.html", error="Invalid credentials")
         token = sign_token(row["id"])
+        flash("Welcome back!", "success")
         resp = make_response(redirect(url_for("dashboard")))
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
         return resp
@@ -201,10 +204,12 @@ def signup_page():
         pw = request.form.get("password") or ""
         nm = (request.form.get("name") or "").strip()
         if not em or not pw or not nm:
+            flash("Email, password and name are required.", "error")
             return render_template("signup.html", error="Email, password and name required")
         conn = get_db()
         if conn.execute("SELECT id FROM users WHERE email = ?", (em,)).fetchone():
             conn.close()
+            flash("That email is already registered.", "error")
             return render_template("signup.html", error="Email already registered")
         hashed = bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=10)).decode("utf-8")
         cur = conn.execute("INSERT INTO users (email, password, name) VALUES (?, ?, ?)", (em, hashed, nm))
@@ -215,6 +220,7 @@ def signup_page():
         conn.commit()
         conn.close()
         token = sign_token(user_id)
+        flash("Account created. Welcome!", "success")
         resp = make_response(redirect(url_for("dashboard")))
         resp.set_cookie("token", token, max_age=7 * 24 * 3600, httponly=True, samesite="Lax")
         return resp
@@ -242,6 +248,30 @@ def dashboard():
     workspaces = [{"id": r["id"], "name": r["name"], "type": r["type"]} for r in ws_rows]
     conn.close()
     return render_template("dashboard.html", user=user_dict, workspaces=workspaces)
+
+
+@app.route("/analytics")
+def analytics_page():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login_page"))
+    user_id, user_dict = user
+    conn = get_db()
+    ws_rows = conn.execute(
+        "SELECT w.id, w.name FROM workspaces w INNER JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ?",
+        (int(user_id),),
+    ).fetchall()
+    workspaces = [{"id": r["id"], "name": r["name"]} for r in ws_rows]
+    conn.close()
+    return render_template("analytics.html", user=user_dict, workspaces=workspaces)
+
+
+@app.route("/notifications")
+def notifications_page():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login_page"))
+    return render_template("notifications.html", user=user[1])
 
 
 # ---- Workspaces (API) ----
